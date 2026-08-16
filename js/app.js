@@ -88,7 +88,8 @@ window.ZenApp = (function () {
       const onReady = () => {
         videoLoaded[sceneId] = true;
         checkProgress();
-        captureFrame(v, sceneId);
+        // 等首帧真正解码后再截取（canplaythrough 不保证首帧已解码）
+        captureFrameWhenReady(v, sceneId);
       };
       v.addEventListener('canplaythrough', onReady);
       if (v.readyState >= 3) onReady();
@@ -153,6 +154,25 @@ window.ZenApp = (function () {
     });
   }
 
+  // ---- 等待首帧解码后再截取 ----
+  // canplaythrough 只表示缓冲足够，不保证首帧已解码，直接 drawImage 会得到黑帧
+  function captureFrameWhenReady(video, sceneId) {
+    // 优先用 requestVideoFrameCallback（最可靠，首帧渲染后立即回调）
+    if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+      video.requestVideoFrameCallback(() => captureFrame(video, sceneId));
+    }
+    // 降级1：readyState >= 2（HAVE_CURRENT_DATA），双 rAF 确保渲染管线完成
+    else if (video.readyState >= 2) {
+      requestAnimationFrame(() => requestAnimationFrame(() => captureFrame(video, sceneId)));
+    }
+    // 降级2：等待 loadeddata 事件（首帧可用）
+    else {
+      video.addEventListener('loadeddata', () => {
+        requestAnimationFrame(() => captureFrame(video, sceneId));
+      }, { once: true });
+    }
+  }
+
   // ---- 截取视频帧作为选择器静态缩略图 ----
   // 直接截取 currentTime=0 的首帧，不做 seek（seek 会触发 waiting → is-stalled → 播放异常）
   function captureFrame(video, sceneId) {
@@ -161,6 +181,11 @@ window.ZenApp = (function () {
       canvas.width = 128; canvas.height = 128;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, 128, 128);
+
+      // 黑帧检测：采样中心像素，若全黑则放弃（保留渐变兜底层）
+      const pixel = ctx.getImageData(64, 64, 1, 1).data;
+      if (pixel[0] < 8 && pixel[1] < 8 && pixel[2] < 8) return;
+
       const url = canvas.toDataURL('image/jpeg', 0.72);
       document.querySelectorAll(`.thumb-img[data-scene="${sceneId}"]`).forEach(el => {
         el.style.backgroundImage = `url(${url})`;
