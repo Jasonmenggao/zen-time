@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a1a1a">
+<title>Zen Time · 一段飞往静默的旅程</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ========== 00 · 入场黑屏：戴耳机提示 + 加载说明 + 冥想语录 ========== -->
+  <div id="screen-intro" class="intro-overlay">
+    <!-- 顶部：戴耳机提示 + 加载说明（持久显示） -->
+    <div class="intro-top">
+      <div class="intro-headphone">
+        <svg class="hp-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 14v-2a9 9 0 0 1 18 0v2"/>
+          <rect x="2.5" y="13" width="4" height="7" rx="1.5"/>
+          <rect x="17.5" y="13" width="4" height="7" rx="1.5"/>
+        </svg>
+        <span class="hp-text">请戴上耳机</span>
+      </div>
+      <p class="intro-notice">
+        航线铺设约需 1-3 分钟 · 请于安静处戴好耳机
+      </p>
+    </div>
+
+    <!-- 中部：名称 + 进度轴 -->
+    <div class="intro-content">
+      <p class="intro-app-name">Zen Time</p>
+      <div class="intro-progress-wrap">
+        <div class="intro-progress-bar">
+          <span class="intro-progress-fill" id="intro-progress-fill"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部：滚动冥想语录 + 进入提示 -->
+    <div class="intro-bottom">
+      <p class="intro-quote" id="intro-quote">你是一位穿越时空的旅人 · 此刻正飞往某个久违的静谧</p>
+      <p class="intro-enter-hint">轻触进入</p>
+    </div>
+  </div>
+
+  <!-- ========== 01 · 入口屏：全屏plane视频 + 选择器叠加 ========== -->
+  <section id="screen-entry" class="screen is-active">
+    <video class="bg-plane-video" id="plane-video" muted loop playsinline preload="auto" src="assets/video/plane.mp4"></video>
+    <div class="overlay-grad"></div>
+
+    <div class="entry-selectors">
+      <div class="scene-row" id="entry-scene-row"></div>
+      <div class="dur-row" id="entry-dur-row"></div>
+    </div>
+
+    <p class="entry-hint">点击任意区域开始</p>
+  </section>
+
+  <!-- ========== 02 · 冥想屏 ========== -->
+  <section id="screen-meditation" class="screen">
+    <!-- 场景视频池：4个独立 video 元素，各带 src，预加载后直接 play() 无需换 src -->
+    <video class="bg-layer scene-video" data-scene="sea" muted loop playsinline webkit-playsinline preload="auto" src="assets/video/sea.mp4"></video>
+    <video class="bg-layer scene-video" data-scene="forest" muted loop playsinline webkit-playsinline preload="auto" src="assets/video/forest.mp4"></video>
+    <video class="bg-layer scene-video" data-scene="snow" muted loop playsinline webkit-playsinline preload="auto" src="assets/video/snow.mp4"></video>
+    <video class="bg-layer scene-video" data-scene="sand" muted loop playsinline webkit-playsinline preload="auto" src="assets/video/sand.mp4"></video>
+    <canvas id="bg-canvas" class="bg-layer"></canvas>
+    <div class="med-vignette"></div>
+
+    <div class="breath-circle" aria-hidden="true">
+      <span class="ring r1"></span>
+      <span class="ring r2"></span>
+      <span class="ring r3"></span>
+      <div class="breath-label" id="breath-label">
+        <span class="breath-action"></span>
+        <span class="breath-count"></span>
+      </div>
+    </div>
+
+    <div class="narration" aria-live="polite">
+      <p class="nline n-prev"></p>
+      <p class="nline n-now"></p>
+      <p class="nline n-next"></p>
+    </div>
+
+    <div class="med-ui" id="med-ui">
+      <div class="med-loc">
+        <span class="loc-name" id="loc-name"></span>
+        <span class="loc-time" id="loc-time"></span>
+        <span class="loc-story" id="loc-story"></span>
+      </div>
+      <div class="med-bottom">
+        <span class="med-timer" id="med-timer">0:00</span>
+        <div class="med-progress"><span id="med-progress-fill"></span></div>
+      </div>
+    </div>
+
+    <button class="exit-btn" id="exit-btn" aria-label="结束旅程">结束旅程</button>
+  </section>
+
+  <!-- ========== 03 · 结束屏：与入口屏镜像，提示"再次启程" ========== -->
+  <section id="screen-end" class="screen">
+    <video class="bg-plane-video" id="end-plane-video" muted loop playsinline preload="auto" src="assets/video/plane.mp4"></video>
+    <div class="overlay-grad"></div>
+
+    <div class="entry-selectors">
+      <div class="scene-row" id="end-scene-row"></div>
+      <div class="dur-row" id="end-dur-row"></div>
+    </div>
+
+    <p class="entry-hint">点击任意区域再次启程</p>
+  </section>
+
+  <script src="js/data.js"></script>
+  <script src="js/visuals.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/session.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
