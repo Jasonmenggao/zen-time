@@ -21,7 +21,3 @@ npm-debug.log*
 
 # Node (if added later)
 node_modules/
-
-# Media files (large binaries — see README for download instructions)
-assets/video/*.mp4
-assets/audio/*.mp3
