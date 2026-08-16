@@ -4,9 +4,9 @@
 
 ## 在线体验
 
-**https://e61d0597f98949579c771c61bddd0816.app.workbuddy.link**
+**https://jasonmenggao.github.io/zen-time/**
 
-> 建议佩戴耳机、使用手机端打开以获得最佳体验。首次加载约需 1-3 分钟（预加载全部音视频素材）。
+> 建议佩戴耳机、使用手机端打开以获得最佳体验。首次加载约需 10-30 秒（预加载全部音视频素材）。
 
 ## 四个场景
 
@@ -70,13 +70,9 @@ index.html          # 三屏结构：入场黑屏 / 入口屏 / 冥想屏 / 结�
 ## 如何运行
 
 ```bash
-# 克隆仓库
+# 克隆仓库（含全部媒体素材，约 83MB）
 git clone https://github.com/jasonmenggao/zen-time.git
 cd zen-time
-
-# 下载媒体文件（视频 + 音频，约 120MB）
-# 从 Release 页面下载 assets.zip，解压到 assets/ 目录
-# 下载地址：https://github.com/jasonmenggao/zen-time/releases
 
 # 任意静态服务器即可，例如 Python
 python -m http.server 8080
@@ -85,7 +81,7 @@ python -m http.server 8080
 # http://localhost:8080
 ```
 
-> **注意**：媒体文件（视频/音频）因体积较大未纳入 git 跟踪，请从 [Releases](https://github.com/jasonmenggao/zen-time/releases) 页面下载并解压到 `assets/` 目录。
+或直接访问在线版：**https://jasonmenggao.github.io/zen-time/**
 
 ## 技术栈
 
