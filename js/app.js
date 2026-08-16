@@ -69,31 +69,36 @@ window.ZenApp = (function () {
     // ---- 预加载视频 ----
     // 追踪：plane-video + end-plane-video + 4 个 .scene-video = 6 个
     const videoLoaded = {};
+    const videoBufPct = {};   // 每个视频的缓冲百分比（0~1）
     const totalVideos = 6;
+
+    function trackVideoBuffer(v, key) {
+      const onProgress = () => {
+        if (v.buffered.length && v.duration) {
+          const end = v.buffered.end(v.buffered.length - 1);
+          videoBufPct[key] = Math.min(1, end / v.duration);
+        }
+        checkProgress();
+      };
+      v.addEventListener('progress', onProgress);
+      v.addEventListener('canplaythrough', () => {
+        videoLoaded[key] = true;
+        videoBufPct[key] = 1;
+        checkProgress();
+      });
+      if (v.readyState >= 3) { videoLoaded[key] = true; videoBufPct[key] = 1; checkProgress(); }
+      v.addEventListener('error', () => { videoLoaded[key] = true; videoBufPct[key] = 1; checkProgress(); });
+    }
 
     // plane-video / end-plane-video（在 DOM 中，共享 plane.mp4 缓存）
     ['plane-video', 'end-plane-video'].forEach(id => {
       const pv = $(id);
-      if (pv) {
-        const onReady = () => { videoLoaded[id] = true; checkProgress(); };
-        pv.addEventListener('canplaythrough', onReady);
-        if (pv.readyState >= 3) onReady();
-      }
+      if (pv) trackVideoBuffer(pv, id);
     });
 
     // 场景视频 — 直接追踪冥想屏中的 .scene-video 元素（它们就是播放元素）
-    // 加载完成后截取一帧作为选择器静态缩略图
     document.querySelectorAll('.scene-video').forEach(v => {
-      const sceneId = v.dataset.scene;
-      const onReady = () => {
-        videoLoaded[sceneId] = true;
-        checkProgress();
-        // 等首帧真正解码后再截取（canplaythrough 不保证首帧已解码）
-        captureFrameWhenReady(v, sceneId);
-      };
-      v.addEventListener('canplaythrough', onReady);
-      if (v.readyState >= 3) onReady();
-      v.addEventListener('error', () => { videoLoaded[sceneId] = true; checkProgress(); });
+      trackVideoBuffer(v, v.dataset.scene);
     });
 
     // ---- 预加载音频 ----
@@ -106,36 +111,59 @@ window.ZenApp = (function () {
     // ---- 综合进度 ----
     let allReady = false;
     let introDismissed = false;
+    let displayedPct = 0;       // 已显示的进度（平滑追赶真实进度）
+
+    function getRealPct() {
+      // 视频缓冲百分比取平均（每个视频权重均等）
+      const videoKeys = Object.keys(videoBufPct);
+      const videoAvg = videoKeys.length
+        ? videoKeys.reduce((s, k) => s + (videoBufPct[k] || 0), 0) / totalVideos
+        : 0;
+      // 视频 55%，音频 45%
+      return videoAvg * 0.55 + audioProgress * 0.45;
+    }
 
     function checkProgress() {
       if (allReady) return;
+      const realPct = getRealPct();
       const videosReady = Object.keys(videoLoaded).filter(k => videoLoaded[k]).length;
-      const videoPct = videosReady / totalVideos;
-      const audioPct = audioProgress;
 
-      // 视频 55%，音频 45%
-      const totalPct = videoPct * 0.55 + audioPct * 0.45;
-      if (fill) fill.style.width = `${Math.min(100, totalPct * 100)}%`;
-
-      if (videosReady >= totalVideos && audioPct >= 1) {
+      if (videosReady >= totalVideos && audioProgress >= 1) {
         allReady = true;
+        if (fill) fill.style.width = '100%';
         intro.classList.add('is-ready');
       }
     }
 
-    // 120s 超时兜底（极端慢网络）
+    // ---- 平滑进度动画 + 最小蠕动 ----
+    // 进度条始终缓慢前进（即使网络卡住），但不会超过真实进度太多
+    const progressTimer = setInterval(() => {
+      if (allReady) { clearInterval(progressTimer); return; }
+      const realPct = getRealPct();
+      // 蠕动策略：显示值追赶真实值，但在真实值停滞时也缓慢爬升（最多到 90%）
+      if (displayedPct < realPct) {
+        displayedPct += (realPct - displayedPct) * 0.3;   // 快速追赶
+      } else if (displayedPct < 90) {
+        displayedPct += 0.4;                                // 最小蠕动 ~每秒 4%
+      }
+      if (fill) fill.style.width = `${Math.min(90, displayedPct)}%`;
+    }, 100);
+
+    // 45s 超时兜底（慢网络下不让用户等太久）
     setTimeout(() => {
       if (!allReady) {
         allReady = true;
+        if (fill) fill.style.width = '100%';
         intro.classList.add('is-ready');
       }
-    }, 120000);
+    }, 45000);
 
     // ---- 用户点击进入（iOS 用户手势解锁）----
     intro.addEventListener('click', () => {
       if (introDismissed || !allReady) return;
       introDismissed = true;
       clearInterval(quoteTimer);
+      clearInterval(progressTimer);
 
       intro.classList.remove('is-ready');
       intro.classList.add('is-hidden');
@@ -152,46 +180,6 @@ window.ZenApp = (function () {
 
       setTimeout(() => { intro.style.display = 'none'; }, 1300);
     });
-  }
-
-  // ---- 等待首帧解码后再截取 ----
-  // canplaythrough 只表示缓冲足够，不保证首帧已解码，直接 drawImage 会得到黑帧
-  function captureFrameWhenReady(video, sceneId) {
-    // 优先用 requestVideoFrameCallback（最可靠，首帧渲染后立即回调）
-    if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
-      video.requestVideoFrameCallback(() => captureFrame(video, sceneId));
-    }
-    // 降级1：readyState >= 2（HAVE_CURRENT_DATA），双 rAF 确保渲染管线完成
-    else if (video.readyState >= 2) {
-      requestAnimationFrame(() => requestAnimationFrame(() => captureFrame(video, sceneId)));
-    }
-    // 降级2：等待 loadeddata 事件（首帧可用）
-    else {
-      video.addEventListener('loadeddata', () => {
-        requestAnimationFrame(() => captureFrame(video, sceneId));
-      }, { once: true });
-    }
-  }
-
-  // ---- 截取视频帧作为选择器静态缩略图 ----
-  // 直接截取 currentTime=0 的首帧，不做 seek（seek 会触发 waiting → is-stalled → 播放异常）
-  function captureFrame(video, sceneId) {
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = 128; canvas.height = 128;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, 128, 128);
-
-      // 黑帧检测：采样中心像素，若全黑则放弃（保留渐变兜底层）
-      const pixel = ctx.getImageData(64, 64, 1, 1).data;
-      if (pixel[0] < 8 && pixel[1] < 8 && pixel[2] < 8) return;
-
-      const url = canvas.toDataURL('image/jpeg', 0.72);
-      document.querySelectorAll(`.thumb-img[data-scene="${sceneId}"]`).forEach(el => {
-        el.style.backgroundImage = `url(${url})`;
-        el.classList.add('is-ready');
-      });
-    } catch (e) { /* canvas tainted 等异常，静默降级为渐变兜底 */ }
   }
 
   function applyDefaults() {
@@ -216,10 +204,11 @@ window.ZenApp = (function () {
         grad.className = 'thumb-grad';
         grad.style.background = s.gradient;
 
-        // 静态图片层（预加载阶段截帧后填充）
+        // 静态图片层（使用预设缩略图，非视频截帧）
         const img = document.createElement('span');
-        img.className = 'thumb-img';
+        img.className = 'thumb-img is-ready';
         img.dataset.scene = s.id;
+        img.style.backgroundImage = `url(assets/img/${s.id}.jpg)`;
 
         btn.appendChild(grad);
         btn.appendChild(img);
