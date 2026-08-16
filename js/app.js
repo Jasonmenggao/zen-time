@@ -111,7 +111,7 @@ window.ZenApp = (function () {
     // ---- 综合进度 ----
     let allReady = false;
     let introDismissed = false;
-    let displayedPct = 0;       // 已显示的进度（平滑追赶真实进度）
+    let displayedPct = 3;        // 初始 3%（与 CSS width:3% 一致，JS 加载前就可见）
 
     function getRealPct() {
       // 视频缓冲百分比取平均（每个视频权重均等）
@@ -136,15 +136,16 @@ window.ZenApp = (function () {
     }
 
     // ---- 平滑进度动画 + 最小蠕动 ----
-    // 进度条始终缓慢前进（即使网络卡住），但不会超过真实进度太多
+    // 进度条始终缓慢前进（即使网络卡住），让用户知道"正在加载"
     const progressTimer = setInterval(() => {
       if (allReady) { clearInterval(progressTimer); return; }
       const realPct = getRealPct();
-      // 蠕动策略：显示值追赶真实值，但在真实值停滞时也缓慢爬升（最多到 90%）
       if (displayedPct < realPct) {
-        displayedPct += (realPct - displayedPct) * 0.3;   // 快速追赶
+        displayedPct += (realPct - displayedPct) * 0.3;   // 快速追赶真实进度
       } else if (displayedPct < 90) {
-        displayedPct += 0.4;                                // 最小蠕动 ~每秒 4%
+        // 蠕动：速度随当前进度递减（开头快、接近 90% 时慢），模拟自然加载感
+        const crawlSpeed = 1.5 - (displayedPct / 90) * 0.8;  // 1.5→0.7
+        displayedPct += crawlSpeed;
       }
       if (fill) fill.style.width = `${Math.min(90, displayedPct)}%`;
     }, 100);
