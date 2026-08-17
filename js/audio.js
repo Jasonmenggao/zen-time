@@ -8,6 +8,9 @@
    ======================================================================== */
 
 window.ZenAudio = (function () {
+  // 媒体 CDN（腾讯云 COS，大陆直连高速；为空则回退相对路径）
+  const ASSET_BASE = 'https://zen-time-media-1366436139.cos.ap-shanghai.myqcloud.com';
+
   let AC = null;            // AudioContext
   let master = null;        // 主增益（冥想音频）
   let source = null;        // 当前 buffer 源（真实音频）
@@ -41,7 +44,7 @@ window.ZenAudio = (function () {
     const total = scenes.length;
     await Promise.all(scenes.map(async (scene) => {
       try {
-        const response = await fetch(`assets/audio/${scene.id}.mp3`);
+        const response = await fetch(`${ASSET_BASE}/assets/audio/${scene.id}.mp3`);
         if (!response.ok) throw new Error('not found');
         audioCache[scene.id] = await response.arrayBuffer();
       } catch (e) {
@@ -81,7 +84,7 @@ window.ZenAudio = (function () {
     }
 
     // ② 在线 fetch
-    const url = `assets/audio/${scene.id}.mp3`;
+    const url = `${ASSET_BASE}/assets/audio/${scene.id}.mp3`;
     try {
       const buf = await fetchAudio(url);
       currentBuffer = buf;
