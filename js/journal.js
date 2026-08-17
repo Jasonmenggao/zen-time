@@ -263,21 +263,41 @@ window.ZenJournal = (function () {
     var echo;
 
     // 情感词库（本地回退用）
-    var POS_WORDS = ['平静','放松','安心','温暖','柔软','舒服','释然','松了','睡','轻','静','好'];
-    var NEG_WORDS = ['焦虑','紧张','累','烦','睡不着','压力','难','崩','哭','低落','委屈','烦闷'];
-    function wordsIn(text, list) {
-      return list.filter(function (w) { return text.indexOf(w) >= 0; });
+    // 全部 2 字及以上，避免“好”之类的单字在复合词里被误命中
+    var POS_WORDS = ['平静','放松','安心','温暖','柔软','释然','舒服','踏实','欢喜','感激','舒展','宁静','松弛'];
+    var NEG_WORDS = ['焦虑','紧张','疲惫','疲倦','失眠','害怕','恐惧','压力','崩溃','哭泣','难过','低落','委屈','烦闷','孤单','孤独','无力','沉重','难受','心烦','慌张','慌乱','烦恼','委屈','愤怒','痛苦','苦涩','迷茫'];
+    // 否定前缀：若情感词前面有这些字，表示被否定（如"不害怕""没压力"），跳过
+    var NEG_BEFORE = new Set(['不','没','别','莫','无','非','勿','毋','否']);
+
+    function findEmotion(text, wordList) {
+      var hit = null;
+      for (var i = 0; i < wordList.length; i++) {
+        var w = wordList[i];
+        var idx = -1;
+        while ((idx = text.indexOf(w, idx + 1)) >= 0) {
+          var prev = idx > 0 ? text[idx - 1] : '';
+          if (NEG_BEFORE.has(prev)) continue; // 被否定，跳过
+          return w; // 找到第一个未被否定的
+        }
+      }
+      return hit;
+    }
+    function fragment(text, max) {
+      var t = (text || '').trim();
+      max = max || 18;
+      return t.length > max ? t.slice(0, max) + '…' : t;
     }
 
     if (records.length === 1) {
       // 只有一条记录
       if (hasText) {
         var t1   = (latest.text || '').trim();
-        var w1   = wordsIn(t1, POS_WORDS).concat(wordsIn(t1, NEG_WORDS))[0];
-        var cut1 = t1.length > 12 ? t1.slice(0, 12) + '…' : t1;
+        var wPos = findEmotion(t1, POS_WORDS);
+        var wNeg = findEmotion(t1, NEG_WORDS);
+        var w1   = wPos || wNeg;
         echo = w1
           ? timeOfDay + '，你写下了“' + w1 + '”。这是第一条记录，从这里开始，慢慢来。'
-          : timeOfDay + '，你写下「' + cut1 + '」。这是第一条记录，从这里开始，慢慢来。';
+          : timeOfDay + '，你写下「' + fragment(t1, 14) + '」。这是第一条记录，从这里开始，慢慢来。';
       } else {
         echo = timeOfDay + '，你给了自己' + latest.duration + '分钟的安静。';
       }
@@ -301,23 +321,22 @@ window.ZenJournal = (function () {
         var latestText = (latest.text || '').trim();
         var prevTexts  = texts.slice(1).join('');
 
-        var curNeg = wordsIn(latestText, NEG_WORDS);
-        var curPos = wordsIn(latestText, POS_WORDS);
-        var prevNeg = prevTexts ? wordsIn(prevTexts, NEG_WORDS) : [];
-        var prevPos = prevTexts ? wordsIn(prevTexts, POS_WORDS) : [];
+        var curNeg = findEmotion(latestText, NEG_WORDS);
+        var curPos = findEmotion(latestText, POS_WORDS);
+        var prevNeg = prevTexts ? findEmotion(prevTexts, NEG_WORDS) : null;
+        var prevPos = prevTexts ? findEmotion(prevTexts, POS_WORDS) : null;
 
-        if (curNeg.length && prevNeg.indexOf(curNeg[0]) >= 0) {
-          echo = '“' + curNeg[0] + '”又一次出现在你的字里——它也许值得被多看一眼。';
-        } else if (curNeg.length && prevPos.length && !prevNeg.length) {
-          echo = '之前你写过“' + prevPos[0] + '”，这次写下了“' + curNeg[0] + '”。感受有起有落，都是被允许的。';
-        } else if (curPos.length && prevNeg.length) {
-          echo = '之前你写过“' + prevNeg[0] + '”，而这次是“' + curPos[0] + '”。有什么正在慢慢变化。';
-        } else if (curPos.length || curNeg.length) {
-          var w = curPos[0] || curNeg[0];
+        if (curNeg && prevNeg === curNeg) {
+          echo = '“' + curNeg + '”又一次出现在你的字里——它也许值得被多看一眼。';
+        } else if (curNeg && prevPos && !prevNeg) {
+          echo = '之前你写过“' + prevPos + '”，这次写下了“' + curNeg + '”。感受有起有落，都是被允许的。';
+        } else if (curPos && prevNeg) {
+          echo = '之前你写过“' + prevNeg + '”，而这次是“' + curPos + '”。有什么正在慢慢变化。';
+        } else if (curPos || curNeg) {
+          var w = curPos || curNeg;
           echo = '你写下了“' + w + '”。这' + records.length + '次冥想里，你一直诚实地看着自己。';
         } else {
-          var cut = latestText.length > 14 ? latestText.slice(0, 14) + '…' : latestText;
-          echo = '你最近写下「' + cut + '」——这些字被好好收着了。';
+          echo = '你最近写下「' + fragment(latestText, 18) + '」——这些字被好好收着了。';
         }
       }
     }
