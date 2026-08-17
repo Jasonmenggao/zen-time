@@ -7,10 +7,8 @@
 window.ZenJournal = (function () {
   const STORAGE_KEY = 'zen_journal_entries';
 
-  // Cloudflare Worker 地址
-  // 注意：workers.dev 域名在中国大陆部分网络不可达，
-  // 所有请求均带超时保护，超时或失败时自动回退到本地体验，不影响使用
-  var WORKER_BASE = 'https://zen-time.zentimeofficial.workers.dev';
+  // 腾讯云函数 URL（已验证 /echo 大模型 + /mail 发信链路均正常）
+  var WORKER_BASE = 'https://1366436139-fza7uu5lzw.ap-shanghai.tencentscf.com';
 
   // LLM API 代理地址（Worker /echo 路由）
   // 不可用时使用本地回退（基于模板的回响生成，无需 API）
