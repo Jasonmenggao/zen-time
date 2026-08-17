@@ -55,6 +55,29 @@ window.ZenJournal = (function () {
   // ---- 兜底文案 ----
   const FALLBACK_ECHO = '你的记录已保存。每次停下来，都是对自己的善意。';
 
+  // ---- 写信：每个场景的人格底色（信=用户最后一次到访的地方所写）----
+  const LETTER_SCENE_PERSONA = {
+    sea:    '你是冲绳的海边。你像一个常年住在海边的旧朋友，看着潮水说话，声音宽阔、舒缓。',
+    forest: '你是屋久岛的森林。你像一个在林子里住了很多年的人，语速慢，珍惜每一个字，声音安静、笃定。',
+    snow:   '你是特罗姆瑟的雪原。你像一个见过漫长极夜的人，知道安静的价值，声音清冽、干净。',
+    sand:   '你是纳米布沙漠。你像一个熟悉风沙的老旅人，说话不绕弯，声音干燥、开阔。'
+  };
+
+  // ---- 写信系统提示词：目标=真人感，硬性禁令压 AI 味 ----
+  const LETTER_SYSTEM_PROMPT =
+    '你将以一个地方的口吻，给一位冥想练习者写一封信。你就是他们最后一次到访的地方。' +
+    '信里必须引用他们日记中真实出现过的细节：某天写下的具体句子、来访问的时间习惯、喜欢的场景变化。' +
+    '真实感来自这些细节，不是来自修辞。\n\n' +
+    '文风硬性要求，逐条遵守：\n' +
+    '1. 像认识很久的朋友在傍晚随手写的信，口语化，句子有长有短，允许一点点絮叨\n' +
+    '2. 全文禁止使用破折号、引号、书名号、括号补充、波浪线\n' +
+    '3. 禁止比喻，最多允许一处朴素的自然联想，且必须与这个场景有关\n' +
+    '4. 禁止排比句，禁止三个以上结构相同的短句连用\n' +
+    '5. 结尾禁止总结升华，禁止愿你如何如何的句式，禁止出现喧嚣、内心、平静、治愈这类词\n' +
+    '6. 自然分三到四段，总长 300 到 500 字\n' +
+    '7. 落款只写这个地方的名字，日期写今天的\n' +
+    '8. 直接输出信的正文，不要任何解释或标题';
+
   // ---- LLM 系统提示词 ----
   const SYSTEM_PROMPT =
     '你是一位安静的倾听者。用户是一位冥想练习者，你会看到他们最近的冥想记录，' +
@@ -222,6 +245,93 @@ window.ZenJournal = (function () {
     }
     // 无 API 配置或网络不可达，使用本地回退
     return generateLocalEcho(records);
+  }
+
+  // ===================== 写信（寄给自己的信，由最后到访的地方执笔） =====================
+
+  // 去 AI 味后处理：清掉漏网的破折号、引号类符号与 markdown 痕迹
+  function sanitizeLetter(text) {
+    if (!text) return '';
+    var t = text;
+    // 引号类（中文书名号/直角引号/弯引号）
+    t = t.replace(/[「」『』《》“”„]/g, '');
+    // 破折号/连接号/波浪线
+    t = t.replace(/——|──|—|–|～|~(?=\s)/g, '，');
+    // markdown 痕迹
+    t = t.replace(/\*\*|__|^#+\s*/gm, '');
+    // 连续逗号合并 + 行首行尾空白
+    t = t.replace(/，，+/g, '，').replace(/[ \t]+\n/g, '\n').trim();
+    return t;
+  }
+
+  // 生成信件正文；失败返回 null（调用方回退到纯文本日记正文）
+  async function generateLetter() {
+    var records = getRecords();
+    if (!records || records.length === 0) return null;
+    if (!LLM_ENDPOINT) return null;
+
+    var reachable = await probeWorker();
+    if (!reachable) return null;
+
+    // 最后一次到访的场景（records[0] 最新）
+    var lastSceneId = records[0].sceneId;
+    var persona = LETTER_SCENE_PERSONA[lastSceneId] ||
+      '你是一片安静的自然之地，像认识对方很久的老朋友。';
+    var sceneName = SCENE_NAMES[lastSceneId] || records[0].sceneName || '这里';
+
+    var llmData = records.slice(0, 20).map(function (r) {
+      return {
+        time: new Date(r.timestamp).toLocaleString('zh-CN', {
+          month: 'numeric', day: 'numeric',
+          hour: '2-digit', minute: '2-digit'
+        }),
+        scene:    SCENE_NAMES[r.sceneId] || r.sceneName,
+        duration: r.duration,
+        text:     r.text || null
+      };
+    });
+    var hasText = records.some(function (r) { return r.text; });
+
+    var today = new Date();
+    var userPrompt = persona + '\n\n' +
+      '今天他们是第 ' + records.length + ' 次来这里，最后一次来是 ' +
+      new Date(records[0].timestamp).toLocaleString('zh-CN', {
+        month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      }) +
+      '，待了 ' + records[0].duration + ' 分钟。今天是 ' +
+      (today.getMonth() + 1) + '月' + today.getDate() + '日。\n\n' +
+      '他们过去的冥想记录如下（text 是他们写下的感受原文）：\n' +
+      JSON.stringify(llmData, null, 2) + '\n\n' +
+      (hasText
+        ? '信里至少要提到他们写过的两处具体内容，可以自然地带出某句话出现或消失的变化。'
+        : '他们几乎没有留下文字，就从时间习惯和场景选择这些细节入手，像老朋友记得对方的习惯那样写。') +
+      '\n现在写下这封信。';
+
+    try {
+      var response = await fetchWithTimeout(LLM_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: LETTER_SYSTEM_PROMPT },
+            { role: 'user',   content: userPrompt }
+          ],
+          max_tokens:  900,
+          temperature: 0.8
+        })
+      }, 45000);
+
+      if (!response.ok) return null;
+      var data = await response.json();
+      var letter = data.choices && data.choices[0] && data.choices[0].message &&
+                   data.choices[0].message.content;
+      letter = sanitizeLetter((letter || '').trim());
+      // 太短说明生成异常，视为失败
+      if (letter.length < 120) return null;
+      return { letter: letter, sceneName: sceneName };
+    } catch (e) {
+      return null;
+    }
   }
 
   // 探测 Worker 是否可达：GET /echo 会立刻返回 405（Worker 只接受 POST），
@@ -572,7 +682,7 @@ window.ZenJournal = (function () {
     }
   }
 
-  // 组装邮件正文（人类可读的日记文本）
+  // 组装日记纯文本（邮件正文兜底 + 附件内容）
   function buildMailContent() {
     var records = getRecords();
     var lines = ['你的冥想日记', ''];
@@ -586,12 +696,9 @@ window.ZenJournal = (function () {
       lines.push(r.text || '—');
       lines.push('');
     });
-    lines.push('—— Zen Time');
+    lines.push('Zen Time');
     lines.push('这些感受只属于你。');
-    return {
-      subject: 'Zen Time · 冥想日记 · ' + new Date().toLocaleDateString('zh-CN'),
-      body: lines.join('\n')
-    };
+    return lines.join('\n');
   }
 
   // 点击"寄给自己"：展开邮箱输入行
@@ -610,7 +717,7 @@ window.ZenJournal = (function () {
     }
   }
 
-  // 点击"寄出"：经 Worker 直发（QQ邮箱 SMTP），无 Worker 则回退 mailto
+  // 点击"寄出"：先让最后一次到访的地方写一封信，日记全文放附件；写信失败回退纯文本正文
   async function onMailSend() {
     var input = $('journal-mail-input');
     var to = input ? input.value.trim() : '';
@@ -622,28 +729,55 @@ window.ZenJournal = (function () {
     // 记住邮箱，下次免填
     try { localStorage.setItem('zen_journal_mail', to); } catch (e) {}
 
-    var mail = buildMailContent();
+    // 第一步：AI 写信（约 10~30 秒）
+    var mail = null;
+    if (MAIL_ENDPOINT) {
+      showOpStatus('正在为你写信，稍等一会儿…', true);
+      var written = await generateLetter();
+      if (written) {
+        mail = {
+          subject: 'Zen Time · 一封来自' + written.sceneName + '的信',
+          body: written.letter + '\n\n（你的日记全文在附件里。）',
+          attachments: [{ filename: '冥想日记.txt', content: buildMailContent() }]
+        };
+      }
+    }
+
+    // 写信失败或未配置：回退纯文本日记正文
+    if (!mail) {
+      mail = {
+        subject: 'Zen Time · 冥想日记 · ' + new Date().toLocaleDateString('zh-CN'),
+        body: buildMailContent(),
+        attachments: [{ filename: '冥想日记.txt', content: buildMailContent() }]
+      };
+    }
 
     if (MAIL_ENDPOINT) {
-      showOpStatus('正在寄出…', true);
+      showOpStatus('信写好了，正在寄出…', true);
       try {
         var res = await fetchWithTimeout(MAIL_ENDPOINT, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: to, subject: mail.subject, body: mail.body })
-        }, 12000);
+          body: JSON.stringify({
+            to: to,
+            subject: mail.subject,
+            body: mail.body,
+            attachments: mail.attachments
+          })
+        }, 15000);
         if (!res.ok) throw new Error('mail failed');
         showOpStatus('已寄出，去邮箱看看吧（也许它躺在垃圾箱里）');
         closeMailRow();
       } catch (e) {
-        // 直发通道不可达（网络阻断/超时），回退：拉起本地邮件客户端
-        openMailto(to, mail);
+        // 直发通道不可达（网络阻断/超时），回退：拉起本地邮件客户端（附件带不走，正文补全）
+        var mailtoMail = { subject: mail.subject, body: mail.body + '\n\n' + buildMailContent() };
+        openMailto(to, mailtoMail);
         showOpStatus('直发通道没走通，已为你打开本地邮箱，把这封信寄给自己吧');
         closeMailRow();
       }
     } else {
-      // 无直发配置：拉起本地邮件客户端
-      openMailto(to, mail);
+      // 无直发配置：拉起本地邮件客户端（正文=信+日记全文）
+      openMailto(to, { subject: mail.subject, body: mail.body + '\n\n' + buildMailContent() });
       showOpStatus('正在打开邮箱，把它寄给自己吧');
       closeMailRow();
     }
