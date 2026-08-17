@@ -23,6 +23,7 @@ window.ZenApp = (function () {
     applyDefaults();
     setupSceneVideoHandlers();
     setupIntro();
+    window.ZenJournal.init();
   }
 
   // ===================== 场景视频事件处理 =====================
@@ -111,7 +112,7 @@ window.ZenApp = (function () {
     // ---- 综合进度 ----
     let allReady = false;
     let introDismissed = false;
-    let displayedPct = 0;       // 已显示的进度（平滑追赶真实进度）
+    let displayedPct = 3;        // 初始 3%（与 CSS width:3% 一致，JS 加载前就可见）
 
     function getRealPct() {
       // 视频缓冲百分比取平均（每个视频权重均等）
@@ -136,15 +137,16 @@ window.ZenApp = (function () {
     }
 
     // ---- 平滑进度动画 + 最小蠕动 ----
-    // 进度条始终缓慢前进（即使网络卡住），但不会超过真实进度太多
+    // 进度条始终缓慢前进（即使网络卡住），让用户知道"正在加载"
     const progressTimer = setInterval(() => {
       if (allReady) { clearInterval(progressTimer); return; }
       const realPct = getRealPct();
-      // 蠕动策略：显示值追赶真实值，但在真实值停滞时也缓慢爬升（最多到 90%）
       if (displayedPct < realPct) {
-        displayedPct += (realPct - displayedPct) * 0.3;   // 快速追赶
+        displayedPct += (realPct - displayedPct) * 0.3;   // 快速追赶真实进度
       } else if (displayedPct < 90) {
-        displayedPct += 0.4;                                // 最小蠕动 ~每秒 4%
+        // 蠕动：速度随当前进度递减（开头快、接近 90% 时慢），模拟自然加载感
+        const crawlSpeed = 1.5 - (displayedPct / 90) * 0.8;  // 1.5→0.7
+        displayedPct += crawlSpeed;
       }
       if (fill) fill.style.width = `${Math.min(90, displayedPct)}%`;
     }, 100);
@@ -257,6 +259,16 @@ window.ZenApp = (function () {
       beginJourney();
     });
     $('exit-btn').addEventListener('click', endEarly);
+
+    // 日记入口按钮（entry / end 屏共享）
+    $('entry-journal-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      window.ZenJournal.showJournal();
+    });
+    $('end-journal-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      window.ZenJournal.showJournal();
+    });
   }
 
   // ===================== 进入旅程 =====================
@@ -354,15 +366,7 @@ window.ZenApp = (function () {
 
     window.ZenAudio.fadeOut(2.0);
 
-    const endScreen = $('screen-end');
-    syncAllSelectors();
-
-    // ① 结束屏出现，视频微放大状态
-    endScreen.classList.add('is-active', 'is-returning');
-    const epv = $('end-plane-video');
-    if (epv) epv.play().catch(() => {});
-
-    // ② 1.2s 后：冥想屏淡出 + 清理冥想媒体 + 风声渐入
+    // ① 1.2s 后：冥想屏淡出 + 清理冥想媒体 + 显示反思页
     setTimeout(() => {
       $('screen-meditation').classList.remove('is-active');
       window.ZenAudio.stop();
@@ -372,15 +376,37 @@ window.ZenApp = (function () {
         activeSceneVideo.pause();
         activeSceneVideo.classList.remove('is-active', 'is-stalled');
       }
+
+      // 显示反思页（冥想结束后留一句话）
+      $('screen-reflect').classList.add('is-active');
+      isTransitioning = false;
+
+      // 启动反思交互，完成后进入结束屏
+      window.ZenJournal.showReflectPage(curScene, curDur, () => {
+        goToEndScreen();
+      });
+    }, 1200);
+  }
+
+  // ---- 反思页结束后：显示结束屏 ----
+  function goToEndScreen() {
+    const endScreen = $('screen-end');
+    syncAllSelectors();
+
+    // 结束屏出现，视频微放大状态
+    endScreen.classList.add('is-active', 'is-returning');
+    const epv = $('end-plane-video');
+    if (epv) epv.play().catch(() => {});
+
+    // 1.2s 后：风声渐入
+    setTimeout(() => {
       endScreen.classList.remove('is-returning');
-      // 风声渐入 — 飞行界面环境音
       window.ZenAudio.startWind();
     }, 1200);
 
-    // ③ 3.0s 后：完全清理
+    // 3.0s 后：完全清理
     setTimeout(() => {
       activeStage = 'end';
-      isTransitioning = false;
     }, 3000);
   }
 

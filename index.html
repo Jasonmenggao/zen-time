@@ -25,7 +25,7 @@
         <span class="hp-text">请戴上耳机</span>
       </div>
       <p class="intro-notice">
-        航线铺设约需 1-3 分钟 · 请于安静处戴好耳机
+        航线铺设约需 30-60 秒 · 请于安静处戴好耳机
       </p>
     </div>
 
@@ -54,6 +54,7 @@
     <div class="entry-selectors">
       <div class="scene-row" id="entry-scene-row"></div>
       <div class="dur-row" id="entry-dur-row"></div>
+      <button class="journal-entry-btn" id="entry-journal-btn">冥想日记</button>
     </div>
 
     <p class="entry-hint">点击任意区域开始</p>
@@ -108,15 +109,57 @@
     <div class="entry-selectors">
       <div class="scene-row" id="end-scene-row"></div>
       <div class="dur-row" id="end-dur-row"></div>
+      <button class="journal-entry-btn" id="end-journal-btn">冥想日记</button>
     </div>
 
     <p class="entry-hint">点击任意区域再次启程</p>
+  </section>
+
+  <!-- ========== 04 · 反思页：冥想结束后留一句话 ========== -->
+  <section id="screen-reflect" class="screen">
+    <div class="reflect-content">
+      <p class="reflect-prompt">此刻，为自己留一句话</p>
+      <div class="reflect-input-wrap">
+        <textarea class="reflect-input" id="reflect-input" rows="1"></textarea>
+        <span class="reflect-cursor is-blinking"></span>
+      </div>
+      <button class="reflect-done" id="reflect-done">完成</button>
+    </div>
+  </section>
+
+  <!-- ========== 05 · 日记页：冥想记录 + AI回响 ========== -->
+  <section id="screen-journal" class="screen">
+    <button class="journal-close" id="journal-close" aria-label="返回">&#8592;</button>
+    <div class="journal-content">
+      <p class="journal-title">冥想日记</p>
+      <div class="journal-list" id="journal-list"></div>
+      <div class="journal-echo-wrap">
+        <div class="journal-echo-loading" id="journal-echo-loading">
+          <div class="echo-breath-circle"></div>
+          <p>整理中</p>
+        </div>
+        <div class="journal-echo" id="journal-echo"></div>
+      </div>
+
+      <div class="journal-footnote">
+        <p class="journal-privacy">你的感受，只属于你。<br>它们安放在这台设备里，不经过任何人的眼睛。</p>
+        <div class="journal-data-ops">
+          <button id="journal-export-btn" class="journal-op-btn">寄给自己</button>
+        </div>
+        <div class="journal-mail-row" id="journal-mail-row">
+          <input type="email" id="journal-mail-input" class="journal-mail-input" placeholder="你的邮箱" autocomplete="email">
+          <button id="journal-mail-send" class="journal-mail-send">寄出</button>
+        </div>
+        <p class="journal-op-status" id="journal-op-status"></p>
+      </div>
+    </div>
   </section>
 
   <script src="js/data.js"></script>
   <script src="js/visuals.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/session.js"></script>
+  <script src="js/journal.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
