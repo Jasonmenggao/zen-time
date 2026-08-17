@@ -59,16 +59,19 @@ window.ZenJournal = (function () {
 
   // ---- LLM 系统提示词 ----
   const SYSTEM_PROMPT =
-    '你是一位安静的倾听者。用户刚完成冥想练习，以下是他们最近的冥想记录。' +
-    '请仔细阅读，像一位老朋友翻看日记后轻声说出的观察。\n\n' +
-    '规则：\n' +
-    '- 只做模式观察，不生成感悟文案\n' +
-    '- 不给建议、诊断、评判\n' +
-    '- 不使用"你应该""你需要"等指导性语言\n' +
-    '- 80字以内\n' +
-    '- 如果有文字记录，关注文字中的情感变化和重复出现的主题\n' +
-    '- 如果没有文字记录，从冥想时间、场景选择、频率等隐式信号做观察\n' +
-    '- 语气温柔、克制，像在轻声自语';
+    '你是一位安静的倾听者。用户是一位冥想练习者，你会看到他们最近的冥想记录，' +
+    '其中"文字"字段是他们冥想后亲笔写下的感受。\n\n' +
+    '你的任务：像一位老朋友翻完这些日记后，轻声说出的观察。\n\n' +
+    '最重要的规则：\n' +
+    '- 必须直接回应他们写下的文字本身：引用或转述他们的用词（如：你写到"很累"），' +
+    '并留意感受之间的呼应与变化（如："累"出现过两次，而这次你写了"松了口气"）\n' +
+    '- 严禁只做时间、场景、次数的流水账式总结。' +
+    '像"你在深夜冥想了5分钟并留下了感受"这样不触及文字内容的回答是不合格的\n' +
+    '- 只做观察和映照，不给建议、诊断、评判\n' +
+    '- 不使用"你应该""你需要""试试"等指导性语言\n' +
+    '- 语气温柔、克制，像在轻声自语\n' +
+    '- 100字以内，2到3句\n' +
+    '- 如果所有记录都没有文字，才从冥想时间、场景选择、频率等隐式信号做观察';
 
   const $ = id => document.getElementById(id);
 
@@ -175,47 +178,62 @@ window.ZenJournal = (function () {
     var hasText = records.some(function (r) { return r.text; });
 
     var userPrompt =
-      '以下是用户最近的' + records.length + '条冥想记录（JSON格式）：\n' +
+      '以下是用户最近的' + records.length + '条冥想记录（JSON格式，"text"是他们写下的感受原文）：\n' +
       JSON.stringify(llmData, null, 2) + '\n\n' +
       (hasText
-        ? '请关注文字中的情感变化和重复主题。'
+        ? '请围绕他们文字里的具体感受来回应：引用他们的用词，指出感受之间的呼应、重复或变化。' +
+          '不要停留在时间、场景、次数这些表层信息上。'
         : '用户没有留下文字，请从冥想时间、场景选择、频率等隐式信号做观察。') +
-      '\n\n请生成一段80字以内的观察。';
+      '\n\n请生成一段100字以内的观察。';
 
     // 尝试调用 LLM API
     if (LLM_ENDPOINT) {
-      try {
-        var response = await fetchWithTimeout(LLM_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: [
-              { role: 'system', content: SYSTEM_PROMPT },
-              { role: 'user',   content: userPrompt }
-            ],
-            max_tokens:  200,
-            temperature: 0.7
-          })
-        });
+      // 先探测可达性（5秒）：网络不可达时立即走本地回退，不让用户干等
+      var reachable = await probeWorker();
+      if (reachable) {
+        try {
+          var response = await fetchWithTimeout(LLM_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messages: [
+                { role: 'system', content: SYSTEM_PROMPT },
+                { role: 'user',   content: userPrompt }
+              ],
+              max_tokens:  300,
+              temperature: 0.7
+            })
+          }, 45000);
 
-        if (!response.ok) throw new Error('LLM request failed');
-        var data = await response.json();
-        var echo = (data.choices && data.choices[0] && data.choices[0].message &&
-                     data.choices[0].message.content && data.choices[0].message.content.trim())
-                   || FALLBACK_ECHO;
+          if (!response.ok) throw new Error('LLM request failed');
+          var data = await response.json();
+          var echo = (data.choices && data.choices[0] && data.choices[0].message &&
+                       data.choices[0].message.content && data.choices[0].message.content.trim())
+                     || FALLBACK_ECHO;
 
-        // 危机关键词后处理（客户端硬编码，不依赖 LLM 判断）
-        var hasCrisis = records.some(function (r) { return scanCrisis(r.text); });
-        if (hasCrisis) echo += '\n\n' + CRISIS_HOTLINE;
+          // 危机关键词后处理（客户端硬编码，不依赖 LLM 判断）
+          var hasCrisis = records.some(function (r) { return scanCrisis(r.text); });
+          if (hasCrisis) echo += '\n\n' + CRISIS_HOTLINE;
 
-        return echo;
-      } catch (e) {
-        // 回退到本地生成
-        return generateLocalEcho(records);
+          return echo;
+        } catch (e) {
+          // 回退到本地生成
+          return generateLocalEcho(records);
+        }
       }
-    } else {
-      // 无 API 配置，使用本地回退
-      return generateLocalEcho(records);
+    }
+    // 无 API 配置或网络不可达，使用本地回退
+    return generateLocalEcho(records);
+  }
+
+  // 探测 Worker 是否可达：GET /echo 会立刻返回 405（Worker 只接受 POST），
+  // 能收到任何 HTTP 响应（包括405）就说明网络通；超时/网络错误则不可达
+  async function probeWorker() {
+    try {
+      await fetchWithTimeout(LLM_ENDPOINT, { method: 'GET' }, 5000);
+      return true;  // 收到了响应（可能是405/500，但网络是通的）
+    } catch (e) {
+      return false; // 超时或网络不可达
     }
   }
 
@@ -244,10 +262,22 @@ window.ZenJournal = (function () {
 
     var echo;
 
+    // 情感词库（本地回退用）
+    var POS_WORDS = ['平静','放松','安心','温暖','柔软','舒服','释然','松了','睡','轻','静','好'];
+    var NEG_WORDS = ['焦虑','紧张','累','烦','睡不着','压力','难','崩','哭','低落','委屈','烦闷'];
+    function wordsIn(text, list) {
+      return list.filter(function (w) { return text.indexOf(w) >= 0; });
+    }
+
     if (records.length === 1) {
       // 只有一条记录
       if (hasText) {
-        echo = timeOfDay + '，你给了自己' + latest.duration + '分钟的安静，并留下了感受。';
+        var t1   = (latest.text || '').trim();
+        var w1   = wordsIn(t1, POS_WORDS).concat(wordsIn(t1, NEG_WORDS))[0];
+        var cut1 = t1.length > 12 ? t1.slice(0, 12) + '…' : t1;
+        echo = w1
+          ? timeOfDay + '，你写下了“' + w1 + '”。这是第一条记录，从这里开始，慢慢来。'
+          : timeOfDay + '，你写下「' + cut1 + '」。这是第一条记录，从这里开始，慢慢来。';
       } else {
         echo = timeOfDay + '，你给了自己' + latest.duration + '分钟的安静。';
       }
@@ -267,24 +297,27 @@ window.ZenJournal = (function () {
                  '。每次停下来，都是对自己的善意。';
         }
       } else {
-        // 有文字 — 简单情感分析
-        var allText = texts.join('');
-        var positive = ['平静','放松','安心','温暖','柔软','轻','静','舒服','好'];
-        var negative = ['焦虑','紧张','累','烦','睡不着','压力','难','崩','哭'];
-        var foundPositive = positive.filter(function (w) { return allText.indexOf(w) >= 0; });
-        var foundNegative = negative.filter(function (w) { return allText.indexOf(w) >= 0; });
+        // 有文字 — 围绕文字本身：引用用词，感受之间的呼应与变化
+        var latestText = (latest.text || '').trim();
+        var prevTexts  = texts.slice(1).join('');
 
-        var parts = [];
-        if (foundNegative.length) parts.push('你提到了"' + foundNegative[0] + '"');
-        if (foundPositive.length) {
-          if (parts.length) parts.push('也提到了"' + foundPositive[0] + '"');
-          else parts.push('你提到了"' + foundPositive[0] + '"');
-        }
+        var curNeg = wordsIn(latestText, NEG_WORDS);
+        var curPos = wordsIn(latestText, POS_WORDS);
+        var prevNeg = prevTexts ? wordsIn(prevTexts, NEG_WORDS) : [];
+        var prevPos = prevTexts ? wordsIn(prevTexts, POS_WORDS) : [];
 
-        if (parts.length === 0) {
-          echo = '你已经冥想了' + records.length + '次，留下了一些文字。最常选择' + topSceneName + '。';
+        if (curNeg.length && prevNeg.indexOf(curNeg[0]) >= 0) {
+          echo = '“' + curNeg[0] + '”又一次出现在你的字里——它也许值得被多看一眼。';
+        } else if (curNeg.length && prevPos.length && !prevNeg.length) {
+          echo = '之前你写过“' + prevPos[0] + '”，这次写下了“' + curNeg[0] + '”。感受有起有落，都是被允许的。';
+        } else if (curPos.length && prevNeg.length) {
+          echo = '之前你写过“' + prevNeg[0] + '”，而这次是“' + curPos[0] + '”。有什么正在慢慢变化。';
+        } else if (curPos.length || curNeg.length) {
+          var w = curPos[0] || curNeg[0];
+          echo = '你写下了“' + w + '”。这' + records.length + '次冥想里，你一直诚实地看着自己。';
         } else {
-          echo = parts.join('，') + '。也许这些感受值得你回去再看一遍。';
+          var cut = latestText.length > 14 ? latestText.slice(0, 14) + '…' : latestText;
+          echo = '你最近写下「' + cut + '」——这些字被好好收着了。';
         }
       }
     }

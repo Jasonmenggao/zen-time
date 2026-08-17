@@ -633,6 +633,11 @@ button{ font-family:inherit; }
   font-size:10px; letter-spacing:0.3em; text-indent:0.3em;
   color:rgba(255,255,255,0.22);
 }
+.journal-echo-loading p.echo-loading-hint{
+  font-size:10px; letter-spacing:0.08em; text-indent:0.08em;
+  color:rgba(255,255,255,0.14); font-style:italic;
+  margin-top:-8px;
+}
 .journal-echo{
   font-size:12px; line-height:2.1;
   letter-spacing:0.05em;
