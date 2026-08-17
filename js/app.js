@@ -15,6 +15,7 @@ window.ZenApp = (function () {
   let isTransitioning = false;
   let activeStage = 'entry';
   let activeSceneVideo = null;   // 当前播放中的 .scene-video 元素
+  let journeyTimers = [];        // beginJourney 的所有 setTimeout：每次进入新旅程前清空，避免与上一次旅程互串
 
   // ===================== 初始化 =====================
   function init() {
@@ -276,7 +277,12 @@ window.ZenApp = (function () {
     if (isTransitioning) return;
     isTransitioning = true;
 
-    // ① 第一时间清空上次冥想的所有残留（台词/计时器/位置信息）
+    // ① 清理上一次旅程的所有未触发定时器（2s 启动会话、2.5s 清理等）
+    // 防止旧会话在新旅程开始后偷偷启动，引发场景/时间串味
+    journeyTimers.forEach(function (id) { clearTimeout(id); });
+    journeyTimers = [];
+
+    // ② 第一时间清空上次冥想的所有残留（台词/计时器/位置信息）
     window.ZenSession.reset();
 
     window.ZenAudio.unlock();
@@ -300,24 +306,24 @@ window.ZenApp = (function () {
     screen.classList.add('is-leaving');
 
     // ② 0.3s 后冥想屏激活
-    setTimeout(() => {
+    journeyTimers.push(setTimeout(() => {
       $('screen-meditation').classList.add('is-active');
-    }, 300);
+    }, 300));
 
     // ③ 2.0s 后启动冥想会话 + 加载场景音频 + 音频淡入
-    setTimeout(() => {
+    journeyTimers.push(setTimeout(() => {
       // 先加载场景音频（真实音频或合成兜底），再淡入音量
       window.ZenAudio.loadScene(curScene).then(() => {
         window.ZenAudio.fadeIn(3.5);
       });
       window.ZenSession.start(curScene, curDur, res => journeyComplete(res));
-    }, 2000);
+    }, 2000));
 
     // ④ 2.5s 后清理入口/结束屏状态
-    setTimeout(() => {
+    journeyTimers.push(setTimeout(() => {
       screen.classList.remove('is-active', 'is-leaving');
       isTransitioning = false;
-    }, 2500);
+    }, 2500));
   }
 
   // ---- 激活场景视频（视频元素池方案：无需换 src/load，直接 play）----
@@ -352,6 +358,9 @@ window.ZenApp = (function () {
   function endEarly() {
     if (isTransitioning) return;
     isTransitioning = true;
+    // 清掉未触发的 beginJourney 定时器，避免在结束旅程后才启动 ZenSession.start
+    journeyTimers.forEach(function (id) { clearTimeout(id); });
+    journeyTimers = [];
     window.ZenSession.stopEarly();
     window.ZenAudio.fadeOut(1.5);
     setTimeout(() => {
