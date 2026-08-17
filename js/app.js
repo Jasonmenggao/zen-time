@@ -211,7 +211,7 @@ window.ZenApp = (function () {
         const img = document.createElement('span');
         img.className = 'thumb-img is-ready';
         img.dataset.scene = s.id;
-        img.style.backgroundImage = `url(assets/img/${s.id}.jpg)`;
+        img.style.backgroundImage = `url(https://zen-time-media-1366436139.cos.ap-shanghai.myqcloud.com/assets/img/${s.id}.jpg)`;
 
         btn.appendChild(grad);
         btn.appendChild(img);
